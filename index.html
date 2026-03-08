@@ -184,6 +184,15 @@
     border: 1px solid var(--cashbox-border, rgba(255,255,255,0.02)); 
     transition: background 0.3s ease, border 0.3s ease;
   }
+  .cashbox .swish {
+    display: inline-block;
+    animation: swish 0.6s ease;
+  }
+  @keyframes swish {
+    0% { transform: translateX(-12px) scale(0.95); opacity: 0; }
+    50% { transform: translateX(4px) scale(1.05); opacity: 1; }
+    100% { transform: translateX(0) scale(1); opacity: 1; }
+  }
   [data-theme="light"] {
     --cashbox-bg: #ffffff;
     --cashbox-border: rgba(0,0,0,0.1);
@@ -830,6 +839,9 @@
       </div>
     </div>
     <button class="transaction-history" id="btnHistory">Transaction History</button>
+
+    <!-- Pending payments (Paystack deposits awaiting verification) -->
+    <div class="pending-payments" id="pendingPaymentsDashboard" style="margin-top:12px; font-size:12px; color:var(--muted);"></div>
   </div>
 
   <!-- Quick action grid -->
@@ -839,9 +851,9 @@
     <div class="action"><span class="emoji">👥</span>To PalmPay</div>
     <div class="action"><span class="emoji">💰</span>Savings</div>
     <div class="action" id="refund"><span class="emoji">💳</span>Refund</div>
-    <div class="action"><span class="emoji">📞</span>Airtime</div>
-    <div class="action"><span class="emoji">📶</span>Data</div>
-    <div class="action"><span class="emoji">⚽</span>Betting</div>
+    <div class="action" id="airtime"><span class="emoji">📞</span>Airtime</div>
+    <div class="action" id="data"><span class="emoji">📶</span>Data</div>
+    <div class="action" id="betting"><span class="emoji">⚽</span>Betting</div>
   </div>
 
   <!-- CashBox -->
@@ -849,7 +861,8 @@
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div>
         <div style="font-weight:700">CashBox</div>
-        <small class="small-muted">₦0.13 Interest Payout</small>
+        <small class="small-muted"><span id="cashboxInterest">₦0.13 (est. daily)</span></small>
+        <small class="small-muted" id="cashboxSpent" style="display:block">Spent: ₦0.00</small>
       </div>
       <div style="font-size:12px;color:var(--muted)">Today 6:01 AM</div>
     </div>
@@ -912,6 +925,7 @@
   <!-- Add Money Form (hidden by default) -->
   <div class="form-card" id="addMoneyForm">
     <input type="text" id="senderNameInput" placeholder="Sender Name" required>
+    <input type="email" id="senderEmailInput" placeholder="Sender Email" required>
     <input type="text" id="senderBankInput" placeholder="Sender Bank" required>
     <input type="text" id="senderAccountInput" placeholder="Sender Account Number" required>
     <input type="number" id="amountInput" placeholder="₦ Amount" required>
@@ -951,11 +965,12 @@
   <!-- Bottom nav -->
   <nav class="bottom" role="navigation" aria-label="Main navigation">
     <div class="bottom-inner">
-      <div class="nav-item active" role="button" aria-label="Home" tabindex="0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M3 9l9-6 9 6v8a2 2 0 01-2 2h-4v-6H9v6H5a2 2 0 01-2-2z"/></svg>Home</div>
-      <div class="nav-item" role="button" aria-label="Loan" tabindex="0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M12 2v20m9-9H3m7-7l-4 4 4 4m6-4l4-4-4-4"/></svg>Loan</div>
-      <div class="nav-item" role="button" aria-label="Wealth" tabindex="0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>Wealth</div>
-      <div class="nav-item" role="button" aria-label="Reward" tabindex="0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>Reward</div>
-      <div class="nav-item" role="button" aria-label="Me" tabindex="0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M12 12a5 5 0 100-10 5 5 0 000 10zM21 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2"/></svg>Me</div>
+      <div id="navHome" class="nav-item active" role="button" aria-label="Home" tabindex="0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M3 9l9-6 9 6v8a2 2 0 01-2 2h-4v-6H9v6H5a2 2 0 01-2-2z"/></svg>Home</div>
+      <div id="navDashboard" class="nav-item" role="button" aria-label="Dashboard" tabindex="0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>Dashboard</div>
+      <div id="navLoan" class="nav-item" role="button" aria-label="Loan" tabindex="0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M12 2v20m9-9H3m7-7l-4 4 4 4m6-4l4-4-4-4"/></svg>Loan</div>
+      <div id="navWealth" class="nav-item" role="button" aria-label="Wealth" tabindex="0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>Wealth</div>
+      <div id="navReward" class="nav-item" role="button" aria-label="Reward" tabindex="0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>Reward</div>
+      <div id="navMe" class="nav-item" role="button" aria-label="Me" tabindex="0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" d="M12 12a5 5 0 100-10 5 5 0 000 10zM21 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2"/></svg>Me</div>
     </div>
   </nav>
 
@@ -970,6 +985,9 @@ const LS_BAL = 'demo_balance_ngn';
 const LS_TX = 'demo_transactions_ngn';
 const LS_PROFILE_PIC = 'demo_profile_pic';
 const LS_THEME = 'demo_theme';
+
+// CashBox interest configuration
+const CASHBOX_ANNUAL_RATE = 0.20; // 20% pa
 
 /* default data */
 let balance = parseFloat(localStorage.getItem(LS_BAL) || '556489.00');
@@ -993,12 +1011,16 @@ const btnAddMoney = document.getElementById('btnAddMoney');
 // sendForm and related elements moved to To Bank.html
 const formStatus = document.getElementById('formStatus');
 
+// API base URL (backend server)
+const API_BASE_URL = window.location.port === '5502' || window.location.port === '5500' ? 'http://localhost:3000' : '';
+
 const addMoneyForm = document.getElementById('addMoneyForm');
 const receiveBtn = document.getElementById('receiveBtn');
 const cancelAddMoney = document.getElementById('cancelAddMoney');
 const senderNameInput = document.getElementById('senderNameInput');
 const senderBankInput = document.getElementById('senderBankInput');
 const senderAccountInput = document.getElementById('senderAccountInput');
+const senderEmailInput = document.getElementById('senderEmailInput');
 const amountInput = document.getElementById('amountInput');
 const addMoneyStatus = document.getElementById('addMoneyStatus');
 
@@ -1088,7 +1110,7 @@ eyeToggle.addEventListener('click', toggleEye);
 btnHistory.addEventListener('click', () => {
   window.location.href = 'Transaction History.html';
 });
-btnAddMoney.addEventListener('click', () => { openAddMoneyQuick(); });
+btnAddMoney.addEventListener('click', () => { window.location.href = 'receive.html'; });
 btnClaim.addEventListener('click', () => {
   showStatus('PalmPoints claimed! 🎉', true, formStatus);
   setTimeout(() => { closeStatus(); }, 2000);
@@ -1110,6 +1132,7 @@ function openAddMoneyQuick() {
   amountInput.value = '';
   senderNameInput.focus();
   showStatus('Enter sender details', true, addMoneyStatus);
+  renderPendingPayments();
 }
 
 /* send / add money / withdraw logic */
@@ -1769,98 +1792,60 @@ cancelTransfer.addEventListener('click', () => {
 // Add Money functionality (still in index.html)
 receiveBtn.addEventListener('click', async () => {
   const senderName = senderNameInput.value.trim();
+  const senderEmail = senderEmailInput.value.trim();
   const senderBank = senderBankInput.value.trim();
   const senderAccount = senderAccountInput.value.trim();
   const amount = parseFloat(amountInput.value || '0');
-  
-  if (!senderName || !senderBank || !senderAccount || !amount || amount <= 0) {
+
+  if (!senderName || !senderEmail || !senderBank || !senderAccount || !amount || amount <= 0) {
     showStatus('Please fill all fields with valid details', false, addMoneyStatus);
     return;
   }
-  
+
   if (!/^\d{10}$/.test(senderAccount.replace(/\D/g, ''))) {
     showStatus('Sender account number must be 10 digits', false, addMoneyStatus);
     return;
   }
 
   receiveBtn.classList.add('loading');
-  await new Promise(resolve => setTimeout(resolve, 1000));
 
-  balance = +(balance + amount).toFixed(2);
-  const now = Date.now();
-  const sessId = genSessId();
-  const tx = { 
-    id: genId(), 
-    name: `Interbank Transfer`, 
-    amount: +amount, 
-    time: now,
-    senderName: senderName,
-    senderBank: senderBank,
-    senderAccount: senderAccount,
-    sessId: sessId
-  };
-  transactions.unshift(tx);
-  saveState();
-  renderAll();
-  showStatus(`Money received: ${formatNGN(amount)} from ${senderName} (${senderBank})`, true, addMoneyStatus);
-  addMoneyForm.classList.remove('active');
-  receiveBtn.classList.remove('loading');
+  // Initialize Paystack payment
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/paystack/initialize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount,
+        email: senderEmail
+      })
+    });
 
-  receiptDetails.innerHTML = `
-    <div class="receipt-logo">PalmPay</div>
+    const result = await response.json();
 
-    <div class="receipt-amount">${formatNGN(amount)}</div>
-    <div class="receipt-status">Successful Transaction</div>
-    <div class="receipt-date">${getFormattedDate(now)}</div>
+    if (!result.status || !result.data || !result.data.authorization_url) {
+      throw new Error(result.message || 'Failed to initialize payment');
+    }
 
-    <div class="divider"></div>
+    // Remember this payment so we can finalize it when the user returns
+    const pending = JSON.parse(localStorage.getItem('pendingPayments') || '{}');
+    pending[result.data.reference] = {
+      amount,
+      senderName,
+      senderBank,
+      senderAccount
+    };
+    localStorage.setItem('pendingPayments', JSON.stringify(pending));
+    renderPendingPayments();
 
-    <div class="row">
-      <div class="label">Recipient:</div>
-      <div class="value">
-        <strong>${userName.toUpperCase()}</strong>
-        <div class="sub">PalmPay | ${senderAccountMask}</div>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="row">
-      <div class="label">Sender:</div>
-      <div class="value">
-        <strong>${senderName.toUpperCase()}</strong>
-        <div class="sub">${senderBank} | ${senderAccount}</div>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="section-title">Transaction Info:</div>
-
-    <div class="row">
-      <div class="label">Transaction Type</div>
-      <div class="value">Interbank Transfer - Received</div>
-    </div>
-
-    <div class="row" style="margin-top: 10px;">
-      <div class="label">Transaction ID</div>
-      <div class="value">${tx.id}</div>
-    </div>
-
-    <div class="row" style="margin-top: 10px;">
-      <div class="label">Session ID</div>
-      <div class="value">
-        ${sessId.slice(0, 15)}<br/>
-        ${sessId.slice(15)}
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="receipt-footer-note">Enjoy Seamless and Unlimited Free Transfers to All Banks.</div>
-  `;
-  successScreen.classList.add('active');
-  attachReceiptActions();
+    // Open Paystack checkout
+    window.open(result.data.authorization_url, '_blank');
+    showStatus('Payment initialized. Complete the payment in the new tab.', true, addMoneyStatus);
+  } catch (error) {
+    console.error('Initialize payment error:', error);
+    showStatus(error.message || 'Failed to initialize payment', false, addMoneyStatus);
+  } finally {
+    receiveBtn.classList.remove('loading');
+  }
 });
 
 cancelAddMoney.addEventListener('click', () => {
@@ -2102,11 +2087,257 @@ function closeStatus() {
   withdrawStatus.textContent = ''; 
 }
 
+function renderPendingPayments() {
+  const containers = Array.from(document.querySelectorAll('.pending-payments'));
+  if (containers.length === 0) return;
+
+  const pending = JSON.parse(localStorage.getItem('pendingPayments') || '{}');
+  const refs = Object.keys(pending);
+
+  // Nothing pending — clear all containers
+  if (refs.length === 0) {
+    containers.forEach(c => c.innerHTML = '');
+    return;
+  }
+
+  const items = refs.map(ref => {
+    const p = pending[ref];
+    const amount = formatNGN(p.amount);
+    const sender = p.senderName || 'Unknown Sender';
+    const bank = p.senderBank || '';
+    const acct = p.senderAccount || '';
+    const bankInfo = [bank, acct].filter(Boolean).join(' | ');
+
+    return `
+      <div class="pending-item" style="padding:10px;border:1px solid rgba(255,255,255,0.12);border-radius:10px;margin-bottom:8px;">
+        <div style="font-weight:600;margin-bottom:4px;">Pending payment: ${amount}</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">From: ${sender}${bankInfo ? ` (${bankInfo})` : ''}</div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="small-btn" data-action="finalize" data-ref="${ref}" style="flex:1">Finalize</button>
+          <button type="button" class="small-btn ghost" data-action="cancel" data-ref="${ref}" style="flex:1">Cancel</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const html = `
+    <div style="font-weight:600;margin-bottom:6px;">Pending payments</div>
+    ${items}
+  `;
+
+  containers.forEach(container => {
+    container.innerHTML = html;
+    // Attach button handlers
+    container.querySelectorAll('button[data-action]').forEach(btn => {
+      const action = btn.getAttribute('data-action');
+      const ref = btn.getAttribute('data-ref');
+      if (action === 'finalize') {
+        btn.addEventListener('click', () => finalizePendingPayment(ref));
+      } else if (action === 'cancel') {
+        btn.addEventListener('click', () => {
+          const pending = JSON.parse(localStorage.getItem('pendingPayments') || '{}');
+          delete pending[ref];
+          localStorage.setItem('pendingPayments', JSON.stringify(pending));
+          renderPendingPayments();
+        });
+      }
+    });
+  });
+}
+
+function getQueryParam(name) {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(name);
+}
+
+async function finalizePendingPayment(reference) {
+  if (!reference) return;
+
+  const pending = JSON.parse(localStorage.getItem('pendingPayments') || '{}');
+  const payment = pending[reference];
+  if (!payment) return;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/paystack/verify-transaction?reference=${encodeURIComponent(reference)}`);
+    const result = await response.json();
+
+    if (!result.status || result.data?.status !== 'success') {
+      showStatus('Payment not completed yet. Please finalize the payment in the Paystack window.', false, addMoneyStatus);
+      return;
+    }
+
+    // Confirmed successful payment
+    const amount = payment.amount;
+    balance = +(balance + amount).toFixed(2);
+
+    const now = Date.now();
+    const tx = {
+      id: genId(),
+      name: 'Add Money (Paystack)',
+      amount: +amount,
+      time: now,
+      senderName: payment.senderName,
+      senderBank: payment.senderBank,
+      senderAccount: payment.senderAccount,
+      reference: reference
+    };
+
+    transactions.unshift(tx);
+    saveState();
+    renderAll();
+    renderPendingPayments();
+
+    // Show success receipt
+    const sessId = genSessId();
+    receiptDetails.innerHTML = `
+      <div class="receipt-logo">PalmPay</div>
+
+      <div class="receipt-amount">${formatNGN(amount)}</div>
+      <div class="receipt-status">Successful Transaction</div>
+      <div class="receipt-date">${getFormattedDate(now)}</div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <div class="label">Recipient:</div>
+        <div class="value">
+          <strong>${userName.toUpperCase()}</strong>
+          <div class="sub">PalmPay | ${senderAccountMask}</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <div class="label">Sender:</div>
+        <div class="value">
+          <strong>${payment.senderName}</strong>
+          <div class="sub">${payment.senderBank} | ${payment.senderAccount}</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-title">Transaction Info:</div>
+
+      <div class="row">
+        <div class="label">Transaction Type</div>
+        <div class="value">Add Money (Paystack)</div>
+      </div>
+
+      <div class="row" style="margin-top: 10px;">
+        <div class="label">Reference</div>
+        <div class="value">${reference}</div>
+      </div>
+
+      <div class="row" style="margin-top: 10px;">
+        <div class="label">Transaction ID</div>
+        <div class="value">${tx.id}</div>
+      </div>
+
+      <div class="row" style="margin-top: 10px;">
+        <div class="label">Session ID</div>
+        <div class="value">
+          ${sessId.slice(0, 15)}<br/>
+          ${sessId.slice(15)}
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="receipt-footer-note">Enjoy Seamless and Unlimited Free Transfers to All Banks.</div>
+    `;
+    successScreen.classList.add('active');
+    attachReceiptActions();
+
+    showStatus(`Payment successful: ${formatNGN(amount)}`, true, addMoneyStatus);
+    addMoneyForm.classList.remove('active');
+
+    delete pending[reference];
+    localStorage.setItem('pendingPayments', JSON.stringify(pending));
+  } catch (error) {
+    console.error('Finalize payment error:', error);
+    showStatus('Could not verify payment yet. Please try again later.', false, addMoneyStatus);
+  }
+}
+
 /* render all */
-function renderAll() { renderBalance(); }
+function computeCashboxInterest() {
+  // Compute estimated daily interest payout based on the current balance and a fixed annual rate.
+  // This simulates a CashBox yield (e.g., 20% per year) and updates the UI accordingly.
+  if (typeof balance !== 'number' || isNaN(balance)) return 0;
+
+  const annualInterest = balance * CASHBOX_ANNUAL_RATE;
+  const dailyInterest = annualInterest / 365;
+  return dailyInterest;
+}
+
+function formatInterest(amount) {
+  const formatted = amount ? formatNGN(amount) : '₦0.00';
+  return `${formatted} (est. daily)`;
+}
+
+function computeSpentAmount(period = 'today') {
+  // Sum all negative (spend) transactions for the given period
+  if (!Array.isArray(transactions)) return 0;
+  
+  const now = new Date();
+  let startOfPeriod = new Date(now);
+  
+  if (period === 'today') {
+    startOfPeriod.setHours(0, 0, 0, 0);
+  } else if (period === 'week') {
+    const day = startOfPeriod.getDay();
+    startOfPeriod.setDate(startOfPeriod.getDate() - day);
+    startOfPeriod.setHours(0, 0, 0, 0);
+  } else if (period === 'month') {
+    startOfPeriod.setDate(1);
+    startOfPeriod.setHours(0, 0, 0, 0);
+  } else if (period === 'year') {
+    startOfPeriod.setMonth(0, 1);
+    startOfPeriod.setHours(0, 0, 0, 0);
+  }
+
+  const startTime = startOfPeriod.getTime();
+  return transactions.reduce((sum, tx) => {
+    if (!tx || typeof tx.amount !== 'number' || tx.time < startTime) return sum;
+    return tx.amount < 0 ? sum + Math.abs(tx.amount) : sum;
+  }, 0);
+}
+
+function updateCashboxInterest() {
+  const interestEl = document.getElementById('cashboxInterest');
+  const spentEl = document.getElementById('cashboxSpent');
+  if (interestEl) {
+    const interestAmount = computeCashboxInterest();
+    interestEl.textContent = formatInterest(interestAmount);
+    interestEl.classList.add('swish');
+    setTimeout(() => interestEl.classList.remove('swish'), 650);
+  }
+
+  if (spentEl) {
+    const spentAmount = computeSpentAmount('today');
+    spentEl.textContent = `Spent Today: ${formatNGN(spentAmount)}`;
+    spentEl.classList.add('swish');
+    setTimeout(() => spentEl.classList.remove('swish'), 650);
+  }
+}
+
+function renderAll() { 
+  renderBalance();
+  updateCashboxInterest();
+}
 
 /* init */
+const initialReference = getQueryParam('reference');
+if (initialReference) {
+  finalizePendingPayment(initialReference);
+}
 renderAll();
+renderPendingPayments();
+
+// Refresh the CashBox interest display every 20 seconds
+setInterval(updateCashboxInterest, 20_000);
 
 /* click outside to close */
 [addMoneyForm, withdrawForm, refundForm].forEach(el => {
@@ -2128,12 +2359,49 @@ document.querySelectorAll('.nav-item').forEach(item => {
   });
 });
 
+/* navigation click handlers */
+const navHome = document.getElementById('navHome');
+const navDashboard = document.getElementById('navDashboard');
+const navLoan = document.getElementById('navLoan');
+const navWealth = document.getElementById('navWealth');
+const navReward = document.getElementById('navReward');
+const navMe = document.getElementById('navMe');
+
+if (navHome) navHome.addEventListener('click', () => {
+  window.location.href = 'index.html';
+});
+if (navDashboard) navDashboard.addEventListener('click', () => {
+  window.location.href = 'dashboard.html';
+});
+if (navLoan) navLoan.addEventListener('click', () => {
+  alert('Loan section coming soon');
+});
+if (navWealth) navWealth.addEventListener('click', () => {
+  alert('Wealth section coming soon');
+});
+if (navReward) navReward.addEventListener('click', () => {
+  alert('Reward section coming soon');
+});
+if (navMe) navMe.addEventListener('click', () => {
+  window.location.href = 'me.html';
+});
+
 /* export sample */
 (function attachDemoClicks() {
   document.querySelectorAll('.action').forEach(el => {
-    if (el.id !== 'toBank' && el.id !== 'withdraw' && el.id !== 'refund') {
-      el.addEventListener('click', () => { showStatus('Feature demo: ' + el.textContent.trim(), true, formStatus); });
+    if (el.id === 'toBank' || el.id === 'withdraw' || el.id === 'refund') {
+      // These are handled elsewhere
+      return;
     }
+
+    if (el.id === 'airtime' || el.id === 'data' || el.id === 'betting') {
+      el.addEventListener('click', () => {
+        window.location.href = `bills.html?type=${el.id}`;
+      });
+      return;
+    }
+
+    el.addEventListener('click', () => { showStatus('Feature demo: ' + el.textContent.trim(), true, formStatus); });
   });
 })();
 </script>

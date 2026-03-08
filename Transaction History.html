@@ -469,6 +469,12 @@
     </button>
     <div class="header-title">Transaction History</div>
     <div class="icons">
+      <div class="icon-btn" id="downloadStatement" title="Download statement">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+          <path stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4"/>
+          <path stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M5 21h14a2 2 0 002-2v-7"/>
+        </svg>
+      </div>
       <div class="icon-btn" id="themeToggle" title="Toggle Theme">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" id="themeIcon">
           <path stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
@@ -480,7 +486,7 @@
   <!-- Transactions -->
   <div class="transactions">
     <div class="bank-banner">
-      <img src="https://via.placeholder.com/300x60" alt="Bank Promotion Banner" id="bankImage">
+      <img src="Banner.jpeg" alt="Bank Promotion Banner" id="bankImage">
       <button class="banner-btn">Explore</button>
     </div>
     <div class="filter-row">
@@ -491,6 +497,8 @@
         <option value="withdraw">Withdraw</option>
         <option value="auto">Auto Deduct-Flexi Repayment</option>
         <option value="data">Buy Data Bundle</option>
+        <option value="addmoney">Add Money</option>
+        <option value="card">Card Top Up</option>
       </select>
       <select class="filter-select" id="statusFilter">
         <option value="all">All Status</option>
@@ -548,6 +556,7 @@ const receiptScreen = document.getElementById('receiptScreen');
 const receiptContent = document.getElementById('receiptContent');
 const backBtn = document.getElementById('backBtn');
 const closeReceipt = document.getElementById('closeReceipt');
+const downloadStatementBtn = document.getElementById('downloadStatement');
 const themeToggle = document.getElementById('themeToggle');
 const themeIcon = document.getElementById('themeIcon');
 const balanceSummary = document.getElementById('balanceSummary');
@@ -578,7 +587,35 @@ function updateThemeIcon(theme) {
 }
 
 themeToggle.addEventListener('click', toggleTheme);
+downloadStatementBtn.addEventListener('click', downloadStatement);
 initTheme();
+
+function downloadStatement() {
+  // Build CSV content
+  const header = ['Date', 'Description', 'Amount'];
+  const rows = transactions.slice().sort((a, b) => a.time - b.time).map(tx => {
+    const date = getFormattedDate(tx.time);
+    const desc = tx.name;
+    const amt = (tx.amount >= 0 ? '+' : '-') + Math.abs(tx.amount).toFixed(2);
+    return [date, desc, amt];
+  });
+
+  const csv = [header, ...rows]
+    .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const filename = `palmpay-statement-${new Date().toISOString().slice(0,19).replace(/[:T]/g, '-')}.csv`;
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 let selectedTxId = null;
 const userName = 'Tiamiyu Abdulsalam';
@@ -595,7 +632,7 @@ function getFormattedDate(ts) {
 
 function deleteTransaction(txId) {
   if (confirm('Are you sure you want to delete this transaction? This action cannot be undone.')) {
-    // Find the transaction to get its amount for balance adjustment
+    // Find the transaction to delete
     const txToDelete = transactions.find(tx => tx.id === txId);
     if (txToDelete) {
       // Remove the transaction from the array
@@ -603,11 +640,6 @@ function deleteTransaction(txId) {
       
       // Update localStorage
       localStorage.setItem(LS_TX, JSON.stringify(transactions));
-      
-      // Update balance in index.html by adjusting it
-      const currentBalance = parseFloat(localStorage.getItem(LS_BAL) || '556489.00');
-      const newBalance = currentBalance - txToDelete.amount; // Subtract the transaction amount
-      localStorage.setItem(LS_BAL, newBalance.toFixed(2));
       
       // Re-render the transaction list and balance summary
       calculateBalanceSummary();
@@ -631,11 +663,13 @@ function calculateBalanceSummary() {
   
   // Filter transactions same way as renderRecent
   const filteredTx = transactions.filter(tx => {
-    const category = tx.name.includes('Interbank') ? 'interbank' : 
+    const category = tx.name.toLowerCase().includes('card') ? 'card' :
+                     tx.name.includes('Interbank') ? 'interbank' : 
                      tx.name.includes('Send') ? 'send' : 
                      tx.name.includes('Withdraw') ? 'withdraw' : 
                      tx.name.includes('Auto') ? 'auto' : 
                      tx.name.includes('Buy') ? 'data' : 
+                     tx.name.includes('Add Money') ? 'addmoney' : 
                      tx.name.includes('Refunded') ? 'other' : 'other';
     const isIn = tx.amount >= 0;
     const matchesCategory = categoryFilterValue === 'all' || category === categoryFilterValue;
@@ -674,6 +708,9 @@ function extractRecipientName(txName) {
   if (txName === 'Interbank Transfer') {
     return 'Interbank Transfer';
   }
+  if (txName.includes('Add Money')) {
+    return 'Add Money';
+  }
   // For other transaction types, return the name as is
   return txName;
 }
@@ -683,11 +720,13 @@ function renderRecent() {
   const categoryFilterValue = categoryFilter.value;
   const statusFilterValue = statusFilter.value;
   const filteredTx = transactions.filter(tx => {
-    const category = tx.name.includes('Interbank') ? 'interbank' : 
+    const category = tx.name.toLowerCase().includes('card') ? 'card' :
+                     tx.name.includes('Interbank') ? 'interbank' : 
                      tx.name.includes('Send') ? 'send' : 
                      tx.name.includes('Withdraw') ? 'withdraw' : 
                      tx.name.includes('Auto') ? 'auto' : 
-                     tx.name.includes('Buy') ? 'data' : 'other';
+                     tx.name.includes('Buy') ? 'data' : 
+                     tx.name.includes('Add Money') ? 'addmoney' : 'other';
     const isIn = tx.amount >= 0;
     const matchesCategory = categoryFilterValue === 'all' || category === categoryFilterValue;
     const matchesStatus = statusFilterValue === 'all' || (statusFilterValue === 'in' && isIn) || (statusFilterValue === 'out' && !isIn);
@@ -703,8 +742,17 @@ function renderRecent() {
     const li = document.createElement('li');
     li.className = 'tx';
     // Extract recipient name for display
-    const displayName = extractRecipientName(tx.name);
-    const category = tx.name.includes('Interbank') ? (tx.amount >= 0 && tx.senderName ? tx.senderName : displayName) : 
+    const isCardTopUp = tx.name.toLowerCase().includes('card');
+    const displayName = isCardTopUp ? 'Card Top Up' : extractRecipientName(tx.name);
+    const categoryKey = isCardTopUp ? 'card' :
+                      tx.name.includes('Interbank') ? 'interbank' :
+                      tx.name.includes('Send') ? 'send' :
+                      tx.name.includes('Withdraw') ? 'withdraw' :
+                      tx.name.includes('Auto') ? 'auto' :
+                      tx.name.includes('Buy') ? 'data' :
+                      tx.name.includes('Add Money') ? 'addmoney' : 'other';
+    const category = isCardTopUp ? 'Card Top Up' :
+                     tx.name.includes('Interbank') ? (tx.amount >= 0 && tx.senderName ? tx.senderName : displayName) : 
                      tx.name.includes('Send') ? tx.name.replace('Send - ', '') : 
                      tx.name.includes('Withdraw') ? tx.name.replace('Withdraw to ', '').split(' (')[0] : 
                      tx.name.includes('Auto') ? 'Auto deduct-Flexi Repayment' : 
@@ -716,12 +764,14 @@ function renderRecent() {
                       tx.name.includes('Withdraw') ? '#f59e0b' : 
                       tx.name.includes('Auto') ? '#f97316' : 
                       tx.name.includes('Buy') ? '#10b981' : 
+                      (tx.name.includes('Add Money') || tx.name.toLowerCase().includes('card')) ? '#22c55e' : 
                       tx.name.includes('Refunded') ? '#22c55e' : '#d1d5db';
-    const icon = tx.name.includes('Interbank') ? '⬇' : 
-                 tx.name.includes('Send') ? '⬆' : 
+    const icon = tx.name.includes('Interbank') ? '⤴️' : 
+                 tx.name.includes('Send') ? '⤴️' : 
                  tx.name.includes('Withdraw') ? '💸' : 
                  tx.name.includes('Auto') ? '📝' : 
                  tx.name.includes('Buy') ? '📶' : 
+                 (tx.name.includes('Add Money') || tx.name.toLowerCase().includes('card')) ? '💳' : 
                  tx.name.includes('Refunded') ? '💳' : '❓';
     li.innerHTML = `
       <div class="tx-meta">
@@ -821,20 +871,21 @@ function renderReceipt() {
       recipientDetails = 'PalmPay | ' + senderAccountMask;
     }
   } else if (selectedTx.name.includes('Add Money')) {
-    // Legacy format support
-    const match = selectedTx.name.match(/(.+?) \(Add Money\)/);
-    if (match) {
-      recipientName = userName;
-      recipientDetails = 'PalmPay | ' + senderAccountMask;
-    }
+    // Incoming add-money transaction (Paystack)
+    recipientName = selectedTx.senderName || 'Unknown Sender';
+    const bank = selectedTx.senderBank || '';
+    const acct = selectedTx.senderAccount || '';
+    recipientDetails = [bank, acct].filter(Boolean).join(' | ');
   }
 
+  const isCardTopUp = selectedTx.name.toLowerCase().includes('card');
   const category = selectedTx.name.includes('Interbank') ? 'Interbank Transfer' :
                    selectedTx.name.includes('Send') ? 'Send Money' :
                    selectedTx.name.includes('Withdraw') ? 'Withdrawal' :
                    selectedTx.name.includes('Auto') ? 'Auto Deduct' :
                    selectedTx.name.includes('Buy') ? 'Data Purchase' :
                    selectedTx.name.includes('Refunded') ? 'Refund' :
+                   isCardTopUp ? 'Card top up' :
                    selectedTx.name.includes('Add Money') ? 'Add Money / Top Up' : 'Other';
 
   const isIncoming = selectedTx.amount >= 0;
@@ -897,7 +948,12 @@ function renderReceipt() {
         <div class="label">Transaction ID</div>
         <div class="value">${selectedTx.id}</div>
       </div>
-
+      ${selectedTx.reference ? `
+      <div class="row" style="margin-top: 10px;">
+        <div class="label">Reference</div>
+        <div class="value">${selectedTx.reference}</div>
+      </div>
+      ` : ''}
       <div class="row" style="margin-top: 10px;">
         <div class="label">Session ID</div>
         <div class="value">

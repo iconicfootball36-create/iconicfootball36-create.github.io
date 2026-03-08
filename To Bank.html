@@ -321,11 +321,6 @@
     line-height: 1.5;
     position: relative;
     z-index: 2;
-  } 
-    font-weight: 700; 
-    color: var(--text-color, #fff);
-    transition: color 0.3s ease;
-    text-align: right;
   }
   .receipt-sub-value { 
     font-size: 12px; 
@@ -389,6 +384,101 @@
     gap: 6px;
     transition: background 0.3s ease, border 0.3s ease, color 0.3s ease;
   }
+  /* Saved Accounts Section */
+  .saved-accounts-wrapper {
+    padding: 0 12px 12px 12px;
+    display: none;
+  }
+  .saved-accounts-wrapper.active {
+    display: block;
+  }
+  .tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--form-border, rgba(255,255,255,0.05));
+    padding-bottom: 8px;
+  }
+  .tab {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: color 0.3s ease, background 0.3s ease;
+  }
+  .tab.active {
+    color: var(--text-color, #fff);
+    background: rgba(124, 58, 237, 0.2);
+  }
+  .accounts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .account-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px;
+    background: var(--form-bg, #0f1113);
+    border: 1px solid var(--form-border, rgba(255,255,255,0.02));
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.3s ease, border 0.3s ease, transform 0.2s ease;
+  }
+  .account-item:hover {
+    background: rgba(124, 58, 237, 0.15);
+    border-color: var(--purple);
+    transform: translateX(4px);
+  }
+  .account-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #7c3aed, #5b21b6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .account-details {
+    flex: 1;
+  }
+  .account-name {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text-color, #fff);
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .account-number {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  .account-bank {
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .account-last-transfer {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .no-accounts {
+    text-align: center;
+    padding: 20px;
+    color: var(--muted);
+    font-size: 12px;
+  }
 </style>
 <!-- PWA Configuration -->
 <link rel="manifest" href="manifest.json">
@@ -417,6 +507,18 @@
       </div>
     </div>
   </header>
+
+  <!-- Saved Accounts Section -->
+  <div class="saved-accounts-wrapper" id="savedAccountsWrapper">
+    <div class="tabs">
+      <button class="tab active" data-tab="recent">Recent</button>
+      <button class="tab" data-tab="favorites">Favorites</button>
+      <button class="tab" data-tab="all">All Accounts</button>
+    </div>
+    <div class="accounts-list" id="accountsList">
+      <div class="no-accounts">No saved accounts yet</div>
+    </div>
+  </div>
 
   <!-- Transfer Form -->
   <div class="form-card">
@@ -459,10 +561,13 @@
 const LS_BAL = 'demo_balance_ngn';
 const LS_TX = 'demo_transactions_ngn';
 const LS_THEME = 'demo_theme';
+const LS_SAVED_ACCOUNTS = 'demo_saved_accounts';
 
 /* default data */
 let balance = parseFloat(localStorage.getItem(LS_BAL) || '556489.00');
 let transactions = JSON.parse(localStorage.getItem(LS_TX) || JSON.stringify([]));
+let savedAccounts = JSON.parse(localStorage.getItem(LS_SAVED_ACCOUNTS) || JSON.stringify([]));
+let currentTab = 'recent';
 
 /* UI refs */
 const bankSelect = document.getElementById('bankSelect');
@@ -479,6 +584,11 @@ const enterManuallyBtn = document.getElementById('enterManuallyBtn');
 const successScreen = document.getElementById('successScreen');
 const receiptDetails = document.getElementById('receiptDetails');
 const closeSuccess = document.getElementById('closeSuccess');
+
+// Saved accounts UI refs
+const savedAccountsWrapper = document.getElementById('savedAccountsWrapper');
+const accountsList = document.getElementById('accountsList');
+const accountsTabs = document.querySelectorAll('.tab');
 
 // Paystack integration state
 let banksList = [];
@@ -499,11 +609,96 @@ const senderAccountMask = '904***9211';
 /* helpers */
 function genId() { return Math.random().toString(36).slice(2, 14); }
 function genSessId() { return Math.floor(Math.random() * 1e15) + ' ' + Math.floor(Math.random() * 1e14); }
-function saveState() { localStorage.setItem(LS_BAL, balance); localStorage.setItem(LS_TX, JSON.stringify(transactions)); }
+function saveState() { 
+  localStorage.setItem(LS_BAL, balance); 
+  localStorage.setItem(LS_TX, JSON.stringify(transactions));
+  localStorage.setItem(LS_SAVED_ACCOUNTS, JSON.stringify(savedAccounts));
+}
 function formatNGN(n) { return '₦ ' + Number(n).toLocaleString('en-NG', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function getFormattedDate(ts) {
   const date = new Date(ts);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+}
+
+/* Saved Accounts Functions */
+function saveAccount(bank, acctNum, acctName) {
+  // Check if account already exists
+  const existing = savedAccounts.find(a => a.accountNumber === acctNum);
+  if (existing) {
+    existing.lastTransfer = new Date().getTime();
+  } else {
+    savedAccounts.unshift({
+      id: genId(),
+      accountName: acctName,
+      accountNumber: acctNum,
+      bankName: bank,
+      timestamp: new Date().getTime(),
+      lastTransfer: new Date().getTime(),
+      isFavorite: false
+    });
+  }
+  saveState();
+  renderSavedAccounts();
+}
+
+function getInitials(name) {
+  return name.split(' ').map(w => w[0]).join('').toUpperCase().substring(0, 2);
+}
+
+function renderSavedAccounts(filter = '') {
+  if (savedAccounts.length === 0) {
+    accountsList.innerHTML = '<div class="no-accounts">No saved accounts yet. Complete a transfer to save.</div>';
+    savedAccountsWrapper.classList.remove('active');
+    return;
+  }
+
+  savedAccountsWrapper.classList.add('active');
+
+  let filtered = savedAccounts;
+  
+  // Filter by prefix (first 3 digits)
+  if (filter.length > 0) {
+    filtered = filtered.filter(acc => acc.accountNumber.startsWith(filter));
+  }
+  
+  // Filter by tab
+  if (currentTab === 'recent') {
+    filtered = filtered.sort((a, b) => (b.lastTransfer || 0) - (a.lastTransfer || 0));
+  } else if (currentTab === 'favorites') {
+    filtered = filtered.filter(a => a.isFavorite).sort((a, b) => (b.lastTransfer || 0) - (a.lastTransfer || 0));
+  }
+
+  if (filtered.length === 0) {
+    accountsList.innerHTML = '<div class="no-accounts">No accounts found</div>';
+    return;
+  }
+
+  let html = '';
+  filtered.forEach(acc => {
+    const lastTransferDate = acc.lastTransfer ? new Date(acc.lastTransfer).toLocaleDateString('en-NG', {month: 'short', day: 'numeric', year: 'numeric'}) : '';
+    const initials = getInitials(acc.accountName);
+    html += `
+      <div class="account-item" onclick="fillAccountForm('${acc.accountNumber}', '${acc.accountName}', '${acc.bankName}')">
+        <div class="account-avatar">${initials}</div>
+        <div class="account-details">
+          <div class="account-name">${acc.accountName}</div>
+          <div class="account-number">${acc.accountNumber}</div>
+          <div class="account-bank">${acc.bankName}</div>
+          ${lastTransferDate ? `<div class="account-last-transfer">Last transfer on ${lastTransferDate}</div>` : ''}
+        </div>
+      </div>
+    `;
+  });
+
+  accountsList.innerHTML = html;
+}
+
+function fillAccountForm(acctNum, acctName, bankName) {
+  bankAcct.value = acctNum;
+  accountName.value = acctName;
+  bankSearch.value = bankName;
+  // Scroll to form
+  document.querySelector('.form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // Theme toggle
@@ -876,45 +1071,14 @@ async function verifyAccount(accountNumber, bankCode) {
 
     const data = await response.json();
     
-    if (!data.status && data.message) {
-      const errorMessage = data.message.toLowerCase();
-      if (errorMessage.includes('limit') || errorMessage.includes('daily') || errorMessage.includes('exceeded')) {
-        console.log('Frontend detected limit error, using mock account name');
-        accountName.value = generateMockAccountNameFallback(accountNumber);
-        accountName.disabled = false;
-        accountVerificationStatus.textContent = '✓ Account verified (Test Mode) - You can edit the name if needed';
-        accountVerificationStatus.style.color = '#22c55e';
-        isAccountVerified = true;
-        submitTransfer.disabled = false;
-        enterManuallyBtn.style.display = 'none';
-        return;
-      }
-    }
-    
-    if (data.status && data.data) {
-      accountName.value = data.data.account_name;
-      accountName.disabled = false;
-      let statusText = '✓ Account verified';
-      
-      if (data.data.is_mock) {
-        statusText += ' (Test Mode)';
-      } else if (data.data.is_fintech) {
-        statusText += ' (Fintech)';
-      }
-      
-      accountVerificationStatus.textContent = statusText + ' - You can edit the name if needed';
-      accountVerificationStatus.style.color = '#22c55e';
-      isAccountVerified = true;
-      submitTransfer.disabled = false;
-      enterManuallyBtn.style.display = 'none';
-    } else {
+    if (!data.status) {
       accountName.value = '';
       accountName.disabled = false;
       accountName.placeholder = 'Account Name (enter manually)';
       accountVerificationStatus.textContent = data.message || 'Account verification failed - Enter name manually';
       accountVerificationStatus.style.color = '#f59e0b';
       enterManuallyBtn.style.display = 'block';
-      
+
       const checkManualName = function() {
         if (accountName.value.trim().length >= 3) {
           isAccountVerified = true;
@@ -928,14 +1092,62 @@ async function verifyAccount(accountNumber, bankCode) {
           accountVerificationStatus.style.color = '#f59e0b';
         }
       };
-      
+
       accountName.removeEventListener('input', window.manualNameHandler);
       window.manualNameHandler = checkManualName;
       accountName.addEventListener('input', window.manualNameHandler);
-      
+
       isAccountVerified = false;
       submitTransfer.disabled = true;
+      return;
     }
+
+    // If API returned a name, use it (even if it's marked as mock/test)
+    if (data.status && data.data && data.data.account_name) {
+      accountName.value = data.data.account_name;
+      accountName.disabled = false;
+      let statusText = '✓ Account verified';
+
+      if (data.data.is_fintech) {
+        statusText += ' (Fintech)';
+      }
+
+      accountVerificationStatus.textContent = statusText + ' - You can edit the name if needed';
+      accountVerificationStatus.style.color = '#22c55e';
+      isAccountVerified = true;
+      submitTransfer.disabled = false;
+      enterManuallyBtn.style.display = 'none';
+      return;
+    }
+
+    // No name returned from API
+    accountName.value = '';
+    accountName.disabled = false;
+    accountName.placeholder = 'Account Name (enter manually)';
+    accountVerificationStatus.textContent = 'Account name could not be resolved - Enter name manually';
+    accountVerificationStatus.style.color = '#f59e0b';
+    enterManuallyBtn.style.display = 'block';
+
+    const checkManualName = function() {
+      if (accountName.value.trim().length >= 3) {
+        isAccountVerified = true;
+        submitTransfer.disabled = false;
+        accountVerificationStatus.textContent = '✓ Ready to transfer (Manual Entry)';
+        accountVerificationStatus.style.color = '#22c55e';
+      } else if (accountName.value.trim().length > 0) {
+        isAccountVerified = false;
+        submitTransfer.disabled = true;
+        accountVerificationStatus.textContent = 'Enter account name (minimum 3 characters)';
+        accountVerificationStatus.style.color = '#f59e0b';
+      }
+    };
+
+    accountName.removeEventListener('input', window.manualNameHandler);
+    window.manualNameHandler = checkManualName;
+    accountName.addEventListener('input', window.manualNameHandler);
+
+    isAccountVerified = false;
+    submitTransfer.disabled = true;
   } catch (error) {
     console.error('Error verifying account:', error);
     accountName.value = '';
@@ -968,6 +1180,13 @@ async function verifyAccount(accountNumber, bankCode) {
 bankAcct.addEventListener('input', (e) => {
   const accountNumber = e.target.value.replace(/\D/g, '');
   e.target.value = accountNumber;
+  
+  // Filter saved accounts by first 3 digits as user types
+  if (accountNumber.length >= 3) {
+    renderSavedAccounts(accountNumber.substring(0, 3));
+  } else {
+    renderSavedAccounts();
+  }
   
   if (accountNumber.length === 10 && selectedBankCode) {
     verifyAccount(accountNumber, selectedBankCode);
@@ -1031,7 +1250,9 @@ submitTransfer.addEventListener('click', async () => {
   const sessId = genSessId();
   const tx = { id: genId(), name: `Interbank to ${aName} (${bName} | ${bAcct})`, amount: -amount, time: now, sessId: sessId };
   transactions.unshift(tx);
-  saveState();
+  
+  // Save the beneficiary account for future transfers
+  saveAccount(bName, bAcct, aName);
 
   receiptDetails.innerHTML = `
     <div class="receipt-logo">PalmPay</div>
@@ -1119,6 +1340,22 @@ function showStatus(msg, ok, statusElement = formStatus) {
     statusElement.textContent = '';
   }, 5000);
 }
+
+// Tab switching for saved accounts
+accountsTabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    accountsTabs.forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentTab = tab.getAttribute('data-tab');
+    
+    // Re-render with current filter if any
+    const acctNum = bankAcct.value.substring(0, 3);
+    renderSavedAccounts(acctNum);
+  });
+});
+
+// Initial render of saved accounts
+renderSavedAccounts();
 
 // Load banks on page load
 loadBanks();

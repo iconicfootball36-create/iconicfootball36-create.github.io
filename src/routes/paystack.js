@@ -68,215 +68,189 @@ router.get('/banks', checkPaystackKey, async (req, res) => {
  * Handles both Paystack banks and fintech banks
  */
 router.post('/verify', checkPaystackKey, async (req, res) => {
+  const { account_number, bank_code } = req.body;
+
+  // Validation
+  if (!account_number || !bank_code) {
+    return res.status(400).json({
+      status: false,
+      message: 'Account number and bank code are required'
+    });
+  }
+
+  // Validate account number format (10 digits for Nigerian banks)
+  if (!/^\d{10}$/.test(account_number)) {
+    return res.status(400).json({
+      status: false,
+      message: 'Account number must be exactly 10 digits'
+    });
+  }
+
+  // Fintech bank codes mapping with specific mock account names
+  const FINTECH_BANKS = {
+    '999992': { name: 'OPay', mockName: 'Opay Test User' },
+    '999991': { name: 'PalmPay', mockName: 'Palmpay Test User' },
+    '50515': { name: 'MoniePoint', mockName: 'MoniePoint Test User' },
+    '50211': { name: 'Kuda Bank', mockName: 'Kuda Test User' },
+    '50457': { name: 'Carbon', mockName: 'Carbon Test User' },
+    '51211': { name: 'UBA Bank', mockName: 'UBA Test User' }
+  };
+
+  // Check if it's a fintech bank
+  const isFintechBank = FINTECH_BANKS.hasOwnProperty(bank_code);
+
+  if (isFintechBank) {
+    // For fintech banks, return mock account name immediately (no API call to avoid limits)
+    const fintechBank = FINTECH_BANKS[bank_code];
+
+    return res.json({
+      status: true,
+      message: 'Account resolved successfully (Fintech - Test Mode)',
+      data: {
+        account_number: account_number,
+        account_name: fintechBank.mockName,
+        bank_id: bank_code,
+        bank_name: fintechBank.name,
+        is_fintech: true,
+        is_mock: true
+      }
+    });
+  }
+
+  // For regular Paystack banks, call Paystack API
   try {
-    const { account_number, bank_code } = req.body;
+    const response = await axios.get(
+      `${PAYSTACK_BASE_URL}/bank/resolve`,
+      {
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        params: {
+          account_number: account_number,
+          bank_code: bank_code
+        }
+      }
+    );
 
-    // Validation
-    if (!account_number || !bank_code) {
-      return res.status(400).json({
-        status: false,
-        message: 'Account number and bank code are required'
-      });
-    }
-
-    // Validate account number format (10 digits for Nigerian banks)
-    if (!/^\d{10}$/.test(account_number)) {
-      return res.status(400).json({
-        status: false,
-        message: 'Account number must be exactly 10 digits'
-      });
-    }
-
-    // Fintech bank codes mapping with specific mock account names
-    const FINTECH_BANKS = {
-      '999992': { name: 'OPay', mockName: 'Opay Test User' },
-      '999991': { name: 'PalmPay', mockName: 'Palmpay Test User' },
-      '50515': { name: 'MoniePoint', mockName: 'MoniePoint Test User' },
-      '50211': { name: 'Kuda Bank', mockName: 'Kuda Test User' },
-      '50457': { name: 'Carbon', mockName: 'Carbon Test User' },
-      '51211': { name: 'UBA Bank', mockName: 'UBA Test User' }
-    
-    };
-
-    // Check if it's a fintech bank
-    const isFintechBank = FINTECH_BANKS.hasOwnProperty(bank_code);
-
-    if (isFintechBank) {
-      // For fintech banks, return mock account name immediately (no API call to avoid limits)
-      const fintechBank = FINTECH_BANKS[bank_code];
-      
+    // Paystack returns { status: true, data: { ... } } on success
+    if (response.data.status) {
       return res.json({
         status: true,
-        message: 'Account resolved successfully (Fintech - Test Mode)',
+        message: 'Account resolved successfully',
         data: {
-          account_number: account_number,
-          account_name: fintechBank.mockName,
-          bank_id: bank_code,
-          bank_name: fintechBank.name,
-          is_fintech: true,
-          is_mock: true
-        }
-      });
-    }
-
-    // For regular Paystack banks, try to call Paystack API
-    try {
-      const response = await axios.get(
-        `${PAYSTACK_BASE_URL}/bank/resolve`,
-        {
-          headers: {
-            'Authorization': `Bearer ${PAYSTACK_SECRET_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          params: {
-            account_number: account_number,
-            bank_code: bank_code
-          }
-        }
-      );
-
-      if (response.data.status) {
-        return res.json({
-          status: true,
-          message: 'Account resolved successfully',
-          data: {
-            account_number: response.data.data.account_number,
-            account_name: response.data.data.account_name,
-            bank_id: response.data.data.bank_id,
-            is_fintech: false,
-            is_mock: false
-          }
-        });
-      } else {
-        // If Paystack returns unsuccessful, check for limit messages
-        const errorMessage = response.data.message || '';
-        const errorMessageLower = errorMessage.toLowerCase();
-        const isLimitError = errorMessageLower.includes('limit') ||
-                            errorMessageLower.includes('daily') ||
-                            errorMessageLower.includes('exceeded') ||
-                            errorMessageLower.includes('test mode') ||
-                            errorMessageLower.includes('upgrade to live');
-        
-        if (isLimitError) {
-          console.log('Paystack daily limit detected in response:', errorMessage);
-          return res.json({
-            status: true,
-            message: 'Account resolved successfully (Test Mode - Daily Limit Fallback)',
-            data: {
-              account_number: account_number,
-              account_name: generateMockAccountName(account_number, 'Bank'),
-              bank_id: bank_code,
-              is_fintech: false,
-              is_mock: true
-            }
-          });
-        }
-        
-        // Other unsuccessful responses also use fallback
-        console.log('Paystack returned unsuccessful response, using mock fallback:', errorMessage);
-        return res.json({
-          status: true,
-          message: 'Account resolved successfully (Test Mode - Fallback)',
-          data: {
-            account_number: account_number,
-            account_name: generateMockAccountName(account_number, 'Bank'),
-            bank_id: bank_code,
-            is_fintech: false,
-            is_mock: true
-          }
-        });
-      }
-    } catch (error) {
-      console.error('Paystack verify error:', error.response?.data || error.message);
-      
-      // Get error message from response
-      const errorMessage = error.response?.data?.message || error.message || '';
-      const errorMessageLower = errorMessage.toLowerCase();
-      
-      // Check if it's a rate limit or daily limit error
-      const isRateLimitError = error.response?.status === 429 || 
-                               error.response?.status === 403 ||
-                               errorMessageLower.includes('limit') ||
-                               errorMessageLower.includes('quota') ||
-                               errorMessageLower.includes('rate') ||
-                               errorMessageLower.includes('daily') ||
-                               errorMessageLower.includes('exceeded') ||
-                               errorMessageLower.includes('test mode daily limit');
-      
-      if (isRateLimitError) {
-        // Return mock account name when rate limit is reached
-        console.log('Paystack rate/daily limit reached, using mock account name');
-        return res.json({
-          status: true,
-          message: 'Account resolved successfully (Test Mode - Daily Limit Fallback)',
-          data: {
-            account_number: account_number,
-            account_name: generateMockAccountName(account_number, 'Bank'),
-            bank_id: bank_code,
-            is_fintech: false,
-            is_mock: true
-          }
-        });
-      }
-      
-      // Handle specific Paystack errors (400 = invalid account/bank code or limit error)
-      if (error.response?.status === 400) {
-        // Check if it's actually a limit error disguised as 400
-        if (errorMessageLower.includes('limit') || 
-            errorMessageLower.includes('daily') || 
-            errorMessageLower.includes('exceeded') ||
-            errorMessageLower.includes('test mode') ||
-            errorMessageLower.includes('upgrade to live')) {
-          console.log('Paystack daily limit detected (400 status), using mock account name');
-          return res.json({
-            status: true,
-            message: 'Account resolved successfully (Test Mode - Daily Limit Fallback)',
-            data: {
-              account_number: account_number,
-              account_name: generateMockAccountName(account_number, 'Bank'),
-              bank_id: bank_code,
-              is_fintech: false,
-              is_mock: true
-            }
-          });
-        }
-        
-        // For other 400 errors in test mode, also use mock fallback
-        console.log('Paystack 400 error in test mode, using mock fallback');
-        return res.json({
-          status: true,
-          message: 'Account resolved successfully (Test Mode - Fallback)',
-          data: {
-            account_number: account_number,
-            account_name: generateMockAccountName(account_number, 'Bank'),
-            bank_id: bank_code,
-            is_fintech: false,
-            is_mock: true
-          }
-        });
-      }
-
-      // For all other errors in test mode, use mock fallback
-      console.log('Paystack API error, using mock account name fallback');
-      return res.json({
-        status: true,
-        message: 'Account resolved successfully (Test Mode - Fallback)',
-        data: {
-          account_number: account_number,
-          account_name: generateMockAccountName(account_number, 'Bank'),
-          bank_id: bank_code,
+          account_number: response.data.data.account_number,
+          account_name: response.data.data.account_name,
+          bank_id: response.data.data.bank_id,
           is_fintech: false,
-          is_mock: true
+          is_mock: false
         }
       });
     }
+
+    // Pass through any error response from Paystack (return 200 to avoid browser network errors)
+    return res.json({
+      status: false,
+      message: response.data.message || 'Failed to resolve account name from Paystack',
+      error: response.data
+    });
   } catch (error) {
-    // Catch any unexpected errors in the outer try block
-    console.error('Unexpected error in verify endpoint:', error);
+    const errorData = error.response?.data || { message: error.message };
+
+    console.error('Paystack verify error:', errorData);
+
+    return res.json({
+      status: false,
+      message: errorData.message || 'Error resolving account',
+      error: errorData
+    });
+  }
+});
+
+/**
+ * POST /api/paystack/initialize
+ * Initialize a Paystack payment to receive money into the demo account.
+ * Body: { amount: number, email: string, name?: string }
+ */
+router.post('/initialize', checkPaystackKey, async (req, res) => {
+  const { amount, email } = req.body;
+
+  if (!amount || amount <= 0 || !email) {
+    return res.status(400).json({
+      status: false,
+      message: 'Amount and email are required to initialize a payment'
+    });
+  }
+
+  try {
+    const response = await axios.post(
+      `${PAYSTACK_BASE_URL}/transaction/initialize`,
+      {
+        amount: Math.round(amount * 100), // kobo
+        email,
+        callback_url: process.env.PAYSTACK_CALLBACK_URL || 'http://localhost:3000/index.html'
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    return res.json({
+      status: true,
+      message: 'Payment initialized',
+      data: response.data.data
+    });
+  } catch (error) {
+    const errorData = error.response?.data || { message: error.message };
+    console.error('Paystack initialize error:', errorData);
     return res.status(500).json({
       status: false,
-      message: 'An unexpected error occurred',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: errorData.message || 'Failed to initialize payment',
+      error: errorData
+    });
+  }
+});
+
+/**
+ * GET /api/paystack/verify-transaction
+ * Verify a Paystack transaction by reference
+ */
+router.get('/verify-transaction', checkPaystackKey, async (req, res) => {
+  const { reference } = req.query;
+
+  if (!reference) {
+    return res.status(400).json({
+      status: false,
+      message: 'Reference query parameter is required'
+    });
+  }
+
+  try {
+    const response = await axios.get(
+      `${PAYSTACK_BASE_URL}/transaction/verify/${encodeURIComponent(reference)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    return res.json({
+      status: true,
+      message: 'Transaction verified',
+      data: response.data.data
+    });
+  } catch (error) {
+    const errorData = error.response?.data || { message: error.message };
+    console.error('Paystack transaction verify error:', errorData);
+    return res.status(500).json({
+      status: false,
+      message: errorData.message || 'Failed to verify transaction',
+      error: errorData
     });
   }
 });
