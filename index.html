@@ -874,6 +874,11 @@
       <p>The Smarter Way to Bank</p>
       <input id="authName" class="auth-input" type="text" placeholder="Enter name for your account" maxlength="40" />
       <input id="authPhone" class="auth-input" type="tel" placeholder="Please enter Phone Number" maxlength="11" inputmode="numeric" />
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
+        <button type="button" id="authPickImage" class="auth-primary" style="flex:1">Add Photo</button>
+        <span id="authImageLabel" style="font-size:12px;color:rgba(255,255,255,0.7);">No image</span>
+      </div>
+      <input type="file" id="authImageUpload" accept="image/*" style="display:none;" />
       <button id="authActionBtn" class="auth-primary">Sign Up</button>
       <div class="auth-link">
         <span id="authModeText">Already have a PalmPay account?</span>
@@ -1132,6 +1137,24 @@ function initAuth() {
   }
 
   const authName = document.getElementById('authName');
+  const authImageUpload = document.getElementById('authImageUpload');
+  const authPickImage = document.getElementById('authPickImage');
+  const authImageLabel = document.getElementById('authImageLabel');
+  let authImageData = null;
+
+  if (authPickImage && authImageUpload) {
+    authPickImage.addEventListener('click', () => authImageUpload.click());
+    authImageUpload.addEventListener('change', (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        authImageData = e.target.result;
+        if (authImageLabel) authImageLabel.textContent = 'Image selected';
+      };
+      reader.readAsDataURL(file);
+    });
+  }
 
   function setMode(newMode) {
     mode = newMode;
@@ -1140,6 +1163,9 @@ function initAuth() {
     authToggleMode.textContent = newMode === 'signup' ? 'Log in' : 'Sign up';
     if (authName) {
       authName.style.display = newMode === 'signup' ? 'block' : 'none';
+    }
+    if (authImageData && authImageLabel) {
+      authImageLabel.textContent = 'Image selected';
     }
   }
 
@@ -1171,6 +1197,10 @@ function initAuth() {
         return;
       }
       const user = { phone: normalized, name, createdAt: Date.now() };
+      if (authImageData) {
+        user.image = authImageData;
+        localStorage.setItem(LS_PROFILE_PIC, authImageData);
+      }
       setLoggedIn(user);
       updateUserContext(user);
       setAuthVisible(false);
@@ -1258,6 +1288,12 @@ const profilePic = document.getElementById('profilePic');
 const profileUpload = document.getElementById('profileUpload');
 const themeToggle = document.getElementById('themeToggle');
 const themeIcon = document.getElementById('themeIcon');
+
+// Allow clicking the profile avatar to open the file picker (works in all browsers)
+if (profilePic && profileUpload) {
+  profilePic.style.cursor = 'pointer';
+  profilePic.addEventListener('click', () => profileUpload.click());
+}
 
 // Load saved profile picture if exists
 const savedProfilePic = localStorage.getItem(LS_PROFILE_PIC);

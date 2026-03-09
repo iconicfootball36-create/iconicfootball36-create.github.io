@@ -57,10 +57,22 @@
 <div class="app">
   <header>
     <div class="profile">
-      <div class="avatar">TA</div>
-      <div class="profile-info">
+      <div class="avatar" id="profileAvatar" title="Tap to update picture">
+        <img id="profileImg" style="display:none;width:100%;height:100%;border-radius:14px;object-fit:cover;" />
+        <span id="profileInitials">TA</span>
+        <input type="file" id="profileImageUpload" accept="image/*" style="display:none" />
+      </div>
+      <div class="profile-info" id="profileDisplay">
         <div class="name" id="profileName">PalmPay User</div>
         <div class="email" id="profileEmail">user@palmpay.demo</div>
+      </div>
+      <div id="profileEditForm" style="display:none; margin-top:10px;">
+        <input id="profileEditName" class="auth-input" type="text" placeholder="Your name" style="margin-bottom:8px;" />
+        <input id="profileEditEmail" class="auth-input" type="email" placeholder="you@example.com" style="margin-bottom:12px;" />
+        <div style="display:flex;gap:10px;">
+          <button id="profileSaveBtn" class="auth-primary" style="flex:1;">Save</button>
+          <button id="profileCancelBtn" class="auth-primary" style="flex:1;background:rgba(255,255,255,0.12);">Cancel</button>
+        </div>
       </div>
     </div>
     <div class="icon" id="settingsBtn" title="Toggle theme">
@@ -155,6 +167,7 @@ initTheme();
 // Auth guard (redirect to login if not logged in)
 const LS_USER = 'demo_user';
 const LS_LOGGED_IN = 'demo_logged_in';
+const LS_PROFILE_PIC = 'demo_profile_pic';
 
 function getStoredUser() {
   try { return JSON.parse(localStorage.getItem(LS_USER) || 'null'); } catch { return null; }
@@ -174,9 +187,29 @@ function populateProfile() {
   const avatarEl = document.querySelector('.avatar');
   if (nameEl) nameEl.textContent = user.name || user.phone;
   if (emailEl) emailEl.textContent = user.email || `${user.phone}@palmpay.demo`;
-  if (avatarEl) {
-    const initials = (user.name || user.phone || '').split(' ').map(x => x[0]).join('').slice(0,2).toUpperCase();
-    avatarEl.textContent = initials || 'PP';
+  const profileImg = document.getElementById('profileImg');
+  const profileInitials = document.getElementById('profileInitials');
+  if (profileImg && profileInitials) {
+    // Prefer persistent profile picture, falling back to stored user image
+    const storedPic = localStorage.getItem(LS_PROFILE_PIC);
+    const imageToUse = storedPic || user.image;
+
+    if (imageToUse) {
+      profileImg.src = imageToUse;
+      profileImg.style.display = 'block';
+      profileInitials.style.display = 'none';
+
+      // Keep user record in sync so other views can reference user.image
+      if (!user.image && storedPic) {
+        user.image = storedPic;
+        localStorage.setItem(LS_USER, JSON.stringify(user));
+      }
+    } else {
+      const initials = (user.name || user.phone || '').split(' ').map(x => x[0]).join('').slice(0,2).toUpperCase();
+      profileInitials.textContent = initials || 'PP';
+      profileImg.style.display = 'none';
+      profileInitials.style.display = 'flex';
+    }
   }
 }
 
@@ -184,16 +217,58 @@ requireLogin();
 populateProfile();
 
 const editProfileOption = document.getElementById('editProfileOption');
+const profileDisplay = document.getElementById('profileDisplay');
+const profileEditForm = document.getElementById('profileEditForm');
+const profileEditName = document.getElementById('profileEditName');
+const profileEditEmail = document.getElementById('profileEditEmail');
+const profileSaveBtn = document.getElementById('profileSaveBtn');
+const profileCancelBtn = document.getElementById('profileCancelBtn');
+
+function showEditForm(show) {
+  if (!profileEditForm || !profileDisplay) return;
+  profileEditForm.style.display = show ? 'block' : 'none';
+  profileDisplay.style.display = show ? 'none' : 'block';
+}
+
 if (editProfileOption) {
   editProfileOption.addEventListener('click', () => {
     const user = getStoredUser();
     if (!user) return;
-    const newName = prompt('Enter your preferred display name', user.name || user.phone);
-    if (!newName) return;
-    user.name = newName.trim();
+    profileEditName.value = user.name || user.phone;
+    profileEditEmail.value = user.email || `${user.phone}@palmpay.demo`;
+    showEditForm(true);
+  });
+}
+
+if (profileSaveBtn) {
+  profileSaveBtn.addEventListener('click', () => {
+    const user = getStoredUser();
+    if (!user) return;
+    const newName = profileEditName.value.trim();
+    const newEmail = profileEditEmail.value.trim();
+    if (!newName) {
+      alert('Name cannot be empty');
+      profileEditName.focus();
+      return;
+    }
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(newEmail)) {
+      alert('Please enter a valid email address');
+      profileEditEmail.focus();
+      return;
+    }
+    user.name = newName;
+    user.email = newEmail;
     localStorage.setItem(LS_USER, JSON.stringify(user));
     populateProfile();
+    showEditForm(false);
     alert('Profile updated successfully.');
+  });
+}
+
+if (profileCancelBtn) {
+  profileCancelBtn.addEventListener('click', () => {
+    showEditForm(false);
   });
 }
 
@@ -201,6 +276,28 @@ document.getElementById('logoutOption').addEventListener('click', () => {
   localStorage.removeItem(LS_LOGGED_IN);
   window.location.href = 'index.html';
 });
+
+// Profile image upload handler
+const profileAvatar = document.getElementById('profileAvatar');
+const profileImageUpload = document.getElementById('profileImageUpload');
+if (profileAvatar && profileImageUpload) {
+  profileAvatar.addEventListener('click', () => profileImageUpload.click());
+  profileImageUpload.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const imgData = reader.result;
+      const user = getStoredUser();
+      if (!user) return;
+      user.image = imgData;
+      localStorage.setItem(LS_USER, JSON.stringify(user));
+      populateProfile();
+      alert('Profile picture updated successfully.');
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 document.getElementById('settingsBtn').addEventListener('click', toggleTheme);
 
