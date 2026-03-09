@@ -60,7 +60,7 @@
       <div class="avatar">TA</div>
       <div class="profile-info">
         <div class="name">Tiamiyu Abdulsalam</div>
-        <div class="email">tiamiyu@example.com</div>
+        <div class="email">adedayoademola171@gmail.com</div>
       </div>
     </div>
     <div class="icon" id="settingsBtn" title="Toggle theme">
@@ -78,10 +78,10 @@
         </div>
         <div class="icon">👤</div>
       </div>
-      <div class="option">
+      <div class="option" id="securityOption">
         <div class="label">
           <div class="title">Security</div>
-          <div class="subtitle">Change password & PIN</div>
+          <div class="subtitle" id="securitySubtitle">Change password & PIN</div>
         </div>
         <div class="icon">🔒</div>
       </div>
@@ -152,6 +152,22 @@ document.getElementById('navDashboard').addEventListener('click', () => goTo('da
 document.getElementById('navLoan').addEventListener('click', () => alert('Loan section coming soon'));
 document.getElementById('navWealth').addEventListener('click', () => alert('Wealth section coming soon'));
 document.getElementById('navMe').addEventListener('click', () => goTo('me.html'));
+
+// Security pin status
+const pinKey = 'demo_pin';
+const securitySubtitle = document.getElementById('securitySubtitle');
+const securityOption = document.getElementById('securityOption');
+
+function updateSecuritySubtitle() {
+  const pin = localStorage.getItem(pinKey);
+  securitySubtitle.textContent = pin ? 'PIN is set (change anytime)' : 'No PIN set. Set a PIN for extra security';
+}
+
+securityOption.addEventListener('click', () => {
+  window.location.href = 'pin.html?action=change';
+});
+
+updateSecuritySubtitle();
 </script>
 </body>
 </html>

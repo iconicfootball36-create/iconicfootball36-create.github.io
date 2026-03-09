@@ -561,6 +561,7 @@
 const LS_BAL = 'demo_balance_ngn';
 const LS_TX = 'demo_transactions_ngn';
 const LS_THEME = 'demo_theme';
+const LS_PIN = 'demo_pin';
 const LS_SAVED_ACCOUNTS = 'demo_saved_accounts';
 
 /* default data */
@@ -613,6 +614,56 @@ function saveState() {
   localStorage.setItem(LS_BAL, balance); 
   localStorage.setItem(LS_TX, JSON.stringify(transactions));
   localStorage.setItem(LS_SAVED_ACCOUNTS, JSON.stringify(savedAccounts));
+}
+
+function requirePin(nextPage = 'To Bank.html') {
+  const pin = localStorage.getItem(LS_PIN);
+  if (!pin) {
+    // No pin set -> send user to create one
+    sessionStorage.setItem('pendingAction', 'transfer');
+    sessionStorage.setItem('pendingReturn', nextPage);
+    window.location.href = `pin.html?action=set&next=${encodeURIComponent(nextPage)}`;
+    return false;
+  }
+  const verified = sessionStorage.getItem('pinVerified');
+  if (verified === '1') {
+    sessionStorage.removeItem('pinVerified');
+    return true;
+  }
+
+  // Store pending transfer details and redirect to PIN entry
+  sessionStorage.setItem('pendingAction', 'transfer');
+  sessionStorage.setItem('pendingReturn', nextPage);
+  const pending = {
+    bName: selectedBankName || bankSearch.value.trim(),
+    bAcct: bankAcct.value.trim(),
+    aName: accountName.value.trim(),
+    amount: parseFloat(sendAmount.value || '0')
+  };
+  sessionStorage.setItem('pendingTransfer', JSON.stringify(pending));
+  window.location.href = `pin.html?action=verify&next=${encodeURIComponent(nextPage)}`;
+  return false;
+}
+
+function executePendingTransfer() {
+  const pending = sessionStorage.getItem('pendingTransfer');
+  if (!pending) return false;
+  try {
+    const data = JSON.parse(pending);
+    if (!data.bAcct) return false;
+    // Populate form fields so UI stays consistent
+    bankAcct.value = data.bAcct;
+    accountName.value = data.aName;
+    bankSearch.value = data.bName;
+    sendAmount.value = data.amount;
+    // Clear pending so it doesn't run again
+    sessionStorage.removeItem('pendingTransfer');
+    // continue with transfer - bypass additional pin requirement
+    performTransfer(data);
+    return true;
+  } catch {
+    return false;
+  }
 }
 function formatNGN(n) { return '₦ ' + Number(n).toLocaleString('en-NG', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function getFormattedDate(ts) {
@@ -705,6 +756,11 @@ function fillAccountForm(acctNum, acctName, bankName) {
 const themeToggle = document.getElementById('themeToggle');
 const currentTheme = localStorage.getItem(LS_THEME) || 'dark';
 document.documentElement.setAttribute('data-theme', currentTheme);
+
+// If coming back from PIN verification, attempt to resume pending transfer
+if (sessionStorage.getItem('pinVerified') === '1') {
+  executePendingTransfer();
+}
 
 // Update theme icon based on current theme
 function updateThemeIcon() {
@@ -1242,75 +1298,88 @@ submitTransfer.addEventListener('click', async () => {
     return;
   }
 
-  submitTransfer.classList.add('loading');
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  // Require PIN before sending
+  if (!requirePin('To Bank.html')) {
+    return;
+  }
 
-  balance = +(balance - amount).toFixed(2);
-  const now = Date.now();
-  const sessId = genSessId();
-  const tx = { id: genId(), name: `Interbank to ${aName} (${bName} | ${bAcct})`, amount: -amount, time: now, sessId: sessId };
-  transactions.unshift(tx);
-  
-  // Save the beneficiary account for future transfers
-  saveAccount(bName, bAcct, aName);
-
-  receiptDetails.innerHTML = `
-    <div class="receipt-logo">PalmPay</div>
-
-    <div class="receipt-amount">${formatNGN(amount)}</div>
-    <div class="receipt-status">Successful Transaction</div>
-    <div class="receipt-date">${getFormattedDate(now)}</div>
-
-    <div class="divider"></div>
-
-    <div class="row">
-      <div class="label">Recipient:</div>
-      <div class="value">
-        <strong>${aName}</strong>
-        <div class="sub">${bName} | ${bAcct}</div>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="row">
-      <div class="label">Sender:</div>
-      <div class="value">
-        <strong>${userName.toUpperCase()}</strong>
-        <div class="sub">PalmPay | ${senderAccountMask}</div>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="section-title">Transaction Info:</div>
-
-    <div class="row">
-      <div class="label">Transaction Type</div>
-      <div class="value">Interbank Transfer</div>
-    </div>
-
-    <div class="row" style="margin-top: 10px;">
-      <div class="label">Transaction ID</div>
-      <div class="value">${tx.id}</div>
-    </div>
-
-    <div class="row" style="margin-top: 10px;">
-      <div class="label">Session ID</div>
-      <div class="value">
-        ${sessId.slice(0, 15)}<br/>
-        ${sessId.slice(15)}
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="receipt-footer-note">Enjoy Seamless and Unlimited Free Transfers to All Banks.</div>
-  `;
-  submitTransfer.classList.remove('loading');
-  successScreen.classList.add('active');
-  attachReceiptActions();
+  // If PIN is already verified this session, continue with transfer
+  performTransfer({ bName, bAcct, aName, amount });
 });
+
+function performTransfer({ bName, bAcct, aName, amount }) {
+  submitTransfer.classList.add('loading');
+
+  setTimeout(() => {
+    balance = +(balance - amount).toFixed(2);
+    const now = Date.now();
+    const sessId = genSessId();
+    const tx = { id: genId(), name: `Interbank to ${aName} (${bName} | ${bAcct})`, amount: -amount, time: now, sessId: sessId };
+    transactions.unshift(tx);
+
+    // Save the beneficiary account for future transfers
+    saveAccount(bName, bAcct, aName);
+
+    receiptDetails.innerHTML = `
+      <div class="receipt-logo">PalmPay</div>
+
+      <div class="receipt-amount">${formatNGN(amount)}</div>
+      <div class="receipt-status">Successful Transaction</div>
+      <div class="receipt-date">${getFormattedDate(now)}</div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <div class="label">Recipient:</div>
+        <div class="value">
+          <strong>${aName}</strong>
+          <div class="sub">${bName} | ${bAcct}</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <div class="label">Sender:</div>
+        <div class="value">
+          <strong>${userName.toUpperCase()}</strong>
+          <div class="sub">PalmPay | ${senderAccountMask}</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section-title">Transaction Info:</div>
+
+      <div class="row">
+        <div class="label">Transaction Type</div>
+        <div class="value">Interbank Transfer</div>
+      </div>
+
+      <div class="row" style="margin-top: 10px;">
+        <div class="label">Transaction ID</div>
+        <div class="value">${tx.id}</div>
+      </div>
+
+      <div class="row" style="margin-top: 10px;">
+        <div class="label">Session ID</div>
+        <div class="value">
+          ${sessId.slice(0, 15)}<br/>
+          ${sessId.slice(15)}
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="receipt-footer-note">Enjoy Seamless and Unlimited Free Transfers to All Banks.</div>
+    `;
+
+    submitTransfer.classList.remove('loading');
+    successScreen.classList.add('active');
+    attachReceiptActions();
+  }, 1000);
+}
+
 
 cancelTransfer.addEventListener('click', () => {
   window.location.href = 'index.html';
