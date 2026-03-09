@@ -59,8 +59,8 @@
     <div class="profile">
       <div class="avatar">TA</div>
       <div class="profile-info">
-        <div class="name">Tiamiyu Abdulsalam</div>
-        <div class="email">adedayoademola171@gmail.com</div>
+        <div class="name" id="profileName">PalmPay User</div>
+        <div class="email" id="profileEmail">user@palmpay.demo</div>
       </div>
     </div>
     <div class="icon" id="settingsBtn" title="Toggle theme">
@@ -71,7 +71,7 @@
   <div class="card">
     <div class="section">
       <div class="section-title">Account</div>
-      <div class="option">
+      <div class="option" id="editProfileOption">
         <div class="label">
           <div class="title">Profile</div>
           <div class="subtitle">Update personal details</div>
@@ -91,6 +91,13 @@
           <div class="subtitle">App preferences</div>
         </div>
         <div class="icon">⚙️</div>
+      </div>
+      <div class="option" id="logoutOption">
+        <div class="label">
+          <div class="title">Logout</div>
+          <div class="subtitle">Sign out of PalmPay</div>
+        </div>
+        <div class="icon">🚪</div>
       </div>
     </div>
 
@@ -144,6 +151,56 @@ function toggleTheme() {
 }
 
 initTheme();
+
+// Auth guard (redirect to login if not logged in)
+const LS_USER = 'demo_user';
+const LS_LOGGED_IN = 'demo_logged_in';
+
+function getStoredUser() {
+  try { return JSON.parse(localStorage.getItem(LS_USER) || 'null'); } catch { return null; }
+}
+
+function requireLogin() {
+  if (localStorage.getItem(LS_LOGGED_IN) !== '1' || !getStoredUser()) {
+    window.location.href = 'index.html';
+  }
+}
+
+function populateProfile() {
+  const user = getStoredUser();
+  if (!user) return;
+  const nameEl = document.getElementById('profileName');
+  const emailEl = document.getElementById('profileEmail');
+  const avatarEl = document.querySelector('.avatar');
+  if (nameEl) nameEl.textContent = user.name || user.phone;
+  if (emailEl) emailEl.textContent = user.email || `${user.phone}@palmpay.demo`;
+  if (avatarEl) {
+    const initials = (user.name || user.phone || '').split(' ').map(x => x[0]).join('').slice(0,2).toUpperCase();
+    avatarEl.textContent = initials || 'PP';
+  }
+}
+
+requireLogin();
+populateProfile();
+
+const editProfileOption = document.getElementById('editProfileOption');
+if (editProfileOption) {
+  editProfileOption.addEventListener('click', () => {
+    const user = getStoredUser();
+    if (!user) return;
+    const newName = prompt('Enter your preferred display name', user.name || user.phone);
+    if (!newName) return;
+    user.name = newName.trim();
+    localStorage.setItem(LS_USER, JSON.stringify(user));
+    populateProfile();
+    alert('Profile updated successfully.');
+  });
+}
+
+document.getElementById('logoutOption').addEventListener('click', () => {
+  localStorage.removeItem(LS_LOGGED_IN);
+  window.location.href = 'index.html';
+});
 
 document.getElementById('settingsBtn').addEventListener('click', toggleTheme);
 

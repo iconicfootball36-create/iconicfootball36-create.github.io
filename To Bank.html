@@ -422,6 +422,7 @@
     overflow-y: auto;
   }
   .account-item {
+    position: relative;
     display: flex;
     gap: 12px;
     padding: 12px;
@@ -435,6 +436,24 @@
     background: rgba(124, 58, 237, 0.15);
     border-color: var(--purple);
     transform: translateX(4px);
+  }
+  .account-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  .account-delete:hover {
+    background: rgba(255,255,255,0.1);
+    color: var(--text-color, #fff);
   }
   .account-avatar {
     width: 40px;
@@ -508,18 +527,6 @@
     </div>
   </header>
 
-  <!-- Saved Accounts Section -->
-  <div class="saved-accounts-wrapper" id="savedAccountsWrapper">
-    <div class="tabs">
-      <button class="tab active" data-tab="recent">Recent</button>
-      <button class="tab" data-tab="favorites">Favorites</button>
-      <button class="tab" data-tab="all">All Accounts</button>
-    </div>
-    <div class="accounts-list" id="accountsList">
-      <div class="no-accounts">No saved accounts yet</div>
-    </div>
-  </div>
-
   <!-- Transfer Form -->
   <div class="form-card">
     <div style="position:relative;margin-bottom:8px;">
@@ -538,6 +545,18 @@
       <button type="button" class="small-btn ghost" id="cancelTransfer" style="flex:1">Cancel</button>
     </div>
     <div id="formStatus" class="status"></div>
+  </div>
+
+  <!-- Saved Accounts Section -->
+  <div class="saved-accounts-wrapper" id="savedAccountsWrapper">
+    <div class="tabs">
+      <button class="tab active" data-tab="recent">Recent</button>
+      <button class="tab" data-tab="favorites">Favorites</button>
+      <button class="tab" data-tab="all">All Accounts</button>
+    </div>
+    <div class="accounts-list" id="accountsList">
+      <div class="no-accounts">No saved accounts yet</div>
+    </div>
   </div>
 
   <!-- Success Screen with Receipt -->
@@ -605,8 +624,17 @@ const API_BASE_URL = (window.location.hostname === 'localhost' || window.locatio
   ? 'http://localhost:3000'
   : '';
 
-const userName = 'Tiamiyu Abdulsalam';
+const LS_USER = 'demo_user';
 const senderAccountMask = '904***9211';
+
+function getUserName() {
+  try {
+    const u = JSON.parse(localStorage.getItem(LS_USER) || 'null');
+    return (u && (u.name || u.phone)) || 'PalmPay User';
+  } catch {
+    return 'PalmPay User';
+  }
+}
 
 /* helpers */
 function genId() { return Math.random().toString(36).slice(2, 14); }
@@ -731,6 +759,7 @@ function renderSavedAccounts(filter = '') {
     const initials = getInitials(acc.accountName);
     html += `
       <div class="account-item" onclick="fillAccountForm('${acc.accountNumber}', '${acc.accountName}', '${acc.bankName}')">
+        <button class="account-delete" title="Remove saved account" onclick="deleteSavedAccount(event, '${acc.id}')">×</button>
         <div class="account-avatar">${initials}</div>
         <div class="account-details">
           <div class="account-name">${acc.accountName}</div>
@@ -745,6 +774,17 @@ function renderSavedAccounts(filter = '') {
   accountsList.innerHTML = html;
 }
 
+function deleteSavedAccount(event, id) {
+  event.stopPropagation();
+  const account = savedAccounts.find(a => a.id === id);
+  if (!account) return;
+  const confirmed = confirm(`Remove saved account ${account.accountName} (${account.accountNumber})?`);
+  if (!confirmed) return;
+  savedAccounts = savedAccounts.filter(a => a.id !== id);
+  saveState();
+  renderSavedAccounts();
+}
+
 function fillAccountForm(acctNum, acctName, bankName) {
   bankAcct.value = acctNum;
   accountName.value = acctName;
@@ -756,11 +796,17 @@ function fillAccountForm(acctNum, acctName, bankName) {
   if (matchedBank) {
     selectedBankCode = matchedBank.code;
     isManualBankEntry = false;
+    accountVerificationStatus.textContent = '✓ Saved account (verified)';
+    accountVerificationStatus.style.color = '#22c55e';
+  } else {
+    // If the bank is not in our list (e.g., new fintech), allow manual entry/transfer
+    selectedBankCode = null;
+    isManualBankEntry = true;
+    accountVerificationStatus.textContent = '✓ Saved account (manual bank)';
+    accountVerificationStatus.style.color = '#22c55e';
   }
 
   isAccountVerified = true;
-  accountVerificationStatus.textContent = '✓ Saved account (verified)';
-  accountVerificationStatus.style.color = '#22c55e';
   enterManuallyBtn.style.display = 'none';
 
   // Enable transfer button if amount is valid
@@ -1373,7 +1419,7 @@ function performTransfer({ bName, bAcct, aName, amount }) {
       <div class="row">
         <div class="label">Sender:</div>
         <div class="value">
-          <strong>${userName.toUpperCase()}</strong>
+          <strong>${getUserName().toUpperCase()}</strong>
           <div class="sub">PalmPay | ${senderAccountMask}</div>
         </div>
       </div>
