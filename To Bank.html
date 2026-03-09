@@ -764,12 +764,21 @@ function fillAccountForm(acctNum, acctName, bankName) {
   enterManuallyBtn.style.display = 'none';
 
   // Enable transfer button if amount is valid
-  const amount = parseFloat(sendAmount.value || '0');
-  submitTransfer.disabled = !(amount > 0 && acctNum.length === 10);
+  updateSubmitButtonState();
 
   // Scroll to form
   document.querySelector('.form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+
+function updateSubmitButtonState() {
+  const amount = parseFloat(sendAmount.value || '0');
+  const hasValidAccount = bankAcct.value.trim().length === 10;
+  submitTransfer.disabled = !(amount > 0 && hasValidAccount && isAccountVerified);
+}
+
+sendAmount.addEventListener('input', () => {
+  updateSubmitButtonState();
+});
 
 // Theme toggle
 const themeToggle = document.getElementById('themeToggle');
